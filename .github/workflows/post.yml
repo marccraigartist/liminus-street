@@ -1,0 +1,52 @@
+# LIMINUS STREET on Instagram. Every 3 hours, post the tunnel hour that has just arrived, as a 9-slide carousel.
+# Nothing is chosen or changed: each hour goes up exactly as painted. The hours in between live on the website.
+# (Started hourly on 1 Nov; Instagram's new-account limit blocked it on 2 Nov, so it rests until Wed 4 Nov 09:00 UTC,
+#  then posts every 3 hours. Step up to hourly after 2-3 weeks by changing the cron to '41 * * * *'.)
+name: LIMINUS STREET on Instagram
+
+on:
+  # timing comes from cron-job.org only (41 past every 3rd hour); GitHub's own schedule removed so runs never double up
+  workflow_dispatch:
+    inputs:
+      max:
+        description: 'How many hours to post in this run'
+        default: '1'
+      mode:
+        description: 'latest = only the newest hour; oldest = catch up in order'
+        default: 'latest'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: liminus-street-instagram
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: pip install -q pillow==12.3.0
+
+      - name: Which hours, and their slides
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+        run: python post/post.py plan out "${{ github.event.inputs.max || '1' }}" "${{ github.event.inputs.mode || 'latest' }}"
+
+      - name: Put the slides where Instagram can fetch them
+        run: |
+          [ "$(cat out/plan.json)" = "[]" ] && { echo "nothing due"; exit 0; }
+          cd out
+          git init -q && git checkout -q -b slides
+          git config user.name "LIMINUS STREET"; git config user.email "marccraigartist@users.noreply.github.com"
+          git add -A ':!plan.json' && git commit -qm "slides $(date -u +%Y-%m-%dT%H)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" slides:slides
+
+      - name: Post
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+        run: python post/post.py publish out "https://raw.githubusercontent.com/${{ github.repository }}/slides"
