@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIMINUS STREET</title>
+<meta name="description" content="To our knowledge, the first online graffiti tunnel painted entirely by autonomous writers made only of maths: no language models, no image generators, no human steering. A new hour every hour. By Marc Craig.">
+<style>
+  :root { --bg:#0b0b0d; --ink:#d9d8d0; --dim:#7d7c76; --line:#222226; --hot:#e8e2c8; }
+  * { box-sizing:border-box; margin:0; padding:0 }
+  html, body { background:var(--bg); color:var(--ink); font:15px/1.5 "Helvetica Neue", Arial, sans-serif; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding:18px 16px 12px; flex-wrap:wrap }
+  h1 { font-size:15px; letter-spacing:.42em; font-weight:700 }
+  .meta { color:var(--dim); font-size:13px; letter-spacing:.08em; font-variant-numeric:tabular-nums }
+  .meta b { color:var(--hot); font-weight:600 }
+  .tunnel { width:100%; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:thin; scrollbar-color:#333 transparent; cursor:grab }
+  .tunnel:active { cursor:grabbing }
+  .tunnel img { display:block; width:100%; min-width:0; height:auto; user-select:none; -webkit-user-drag:none }
+  @media (max-width: 900px) { .tunnel img { width:auto; height:72vh; max-width:none } }
+  .scrub { display:flex; align-items:center; gap:14px; padding:14px 16px 4px }
+  .track { position:relative; flex:1; padding-top:34px }
+  .track input { width:100%; margin:0; accent-color:#cfc9ad; display:block }
+  .when { position:absolute; top:0; transform:translateX(-50%); white-space:nowrap; font-size:12px; letter-spacing:.06em; text-align:center;
+          line-height:1.25; pointer-events:none; font-variant-numeric:tabular-nums }
+  .when b { color:var(--hot); font-weight:600 }
+  .when span { color:var(--dim); font-size:11px }
+  .when.future span { color:#c9a96a }
+  .nowmark { position:absolute; bottom:-6px; width:2px; height:6px; background:#cfc9ad; transform:translateX(-1px) }
+  .nowmark::after { content:'NOW'; position:absolute; top:7px; left:50%; transform:translateX(-50%); font-size:9px; letter-spacing:.18em; color:var(--dim) }
+  .scrub { padding-bottom:16px }
+  .scrub button { background:none; border:1px solid var(--line); color:var(--ink); font:inherit; font-size:12px; letter-spacing:.12em; padding:5px 10px; cursor:pointer }
+  .scrub button:hover { border-color:#555 }
+  .walls { display:grid; grid-template-columns:repeat(4, 1fr); gap:1px; background:var(--line); margin:14px 16px 0; border:1px solid var(--line) }
+  .wall { background:var(--bg); padding:10px 12px }
+  .wall h3 { font-size:11px; letter-spacing:.24em; color:var(--dim); font-weight:600; margin-bottom:4px }
+  .wall p { font-size:13px; line-height:1.55 }
+  .wall .joe { color:#f1efe6; text-decoration:line-through; text-decoration-color:#bdbab0 }
+  .wall .none { color:#4b4a46 }
+  @media (max-width: 700px) { .walls { grid-template-columns:repeat(2, 1fr) } }
+  footer { padding:22px 16px 30px; color:var(--dim); font-size:12px; line-height:1.7; max-width:760px }
+  footer a { color:var(--ink) }
+  .wait { padding:40vh 16px; text-align:center; color:var(--dim); letter-spacing:.3em; font-size:12px }
+</style>
+</head>
+<body>
+<header>
+  <h1>LIMINUS STREET</h1>
+  <div class="meta" id="meta">&nbsp;</div>
+</header>
+<div class="tunnel" id="tunnel"><div class="wait">THE TUNNEL IS WAKING</div></div>
+<div class="scrub" id="scrubrow" hidden>
+  <button id="live">LIVE</button>
+  <div class="track"><div class="when" id="when"></div>
+    <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Move through the tunnel's hours: back three days, or ahead to the hours already painted">
+    <div class="nowmark" id="nowmark"></div></div>
+</div>
+<div class="walls" id="walls"></div>
+<footer>
+  To our knowledge, the first online graffiti tunnel painted entirely by autonomous writers: no language models, no image generators, no human steering. Every writer here is made only of maths: they are born, learn from what they see,
+  paint at the hour of their own clock and leave. Twins paint face to face across the tunnel. Nothing is steered.
+  A piece lasts at most six hours. Joe goes over whatever he likes.
+  <br>A new hour every hour. &nbsp;·&nbsp; <a href="https://marccraig.co.uk" target="_top">Marc Craig</a>
+</footer>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let hours = [], live = true, idx = 0, started = null;
+
+  const utc = s => Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10), +s.slice(11,13));
+  const fmt = ms => new Date(ms).toLocaleString('en-GB', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false });
+  const pos = i => { const n = Math.max(1, hours.length - 1), p = i / n; return `calc(${p * 100}% + ${8 - 16 * p}px)`; };
+  function rel(i) {
+    const d = Math.round((utc(hours[i].hour) - utc(hours[current()].hour)) / 3600000);
+    if (d === 0) return ['NOW', ''];
+    const u = Math.abs(d) === 1 ? 'hour' : 'hours';
+    return d > 0 ? [`in ${d} ${u} · not happened yet`, 'future'] : [`${-d} ${u} ago`, ''];
+  }
+  function label(i) {
+    const [r, cls] = rel(i), w = $('when');
+    w.className = 'when ' + cls; w.style.left = pos(i);
+    w.style.transform = `translateX(-${100 * i / Math.max(1, hours.length - 1)}%)`;  // stays on screen at both ends
+    w.innerHTML = `<b>${fmt(utc(hours[i].hour))}</b><br><span>${r}</span>`;
+    $('nowmark').style.left = pos(current());
+  }
+
+  function current() {
+    const now = Date.now(); let i = -1;
+    hours.forEach((h, k) => { if (utc(h.hour) <= now) i = k; });
+    return i < 0 ? 0 : i;
+  }
+
+  function show(i) {
+    const h = hours[i]; if (!h) return; idx = i;
+    const t = $('tunnel');
+    let img = t.querySelector('img');
+    if (!img) { t.innerHTML = ''; img = new Image(); img.alt = 'LIMINUS STREET, both walls of the tunnel'; t.appendChild(img); }
+    img.src = h.image;
+    $('meta').innerHTML = `<b>${fmt(utc(h.hour))}</b> &nbsp;·&nbsp; hour ${h.tick + 7} of its life &nbsp;·&nbsp; generation ${Math.max(0, h.generation)}` +
+      (h.joe ? ` &nbsp;·&nbsp; Joe hit ${h.joe}` : '') + (live ? ' &nbsp;·&nbsp; LIVE' : '');
+    const order = ['1A','2A','3A','4A','1X','2X','3X','4X'];
+    $('walls').innerHTML = order.map(k => {
+      const ws = (h.walls && h.walls[k]) || [];
+      const names = ws.length ? ws.map(w => `<span class="${w.joe ? 'joe' : ''}" title="${w.style}${w.crew ? ' · ' + w.crew : ''}">${w.name}</span>`).join(' &nbsp; ')
+                              : '<span class="none">bare concrete</span>';
+      return `<div class="wall"><h3>BAY ${k[0]} · WALL ${k[1]}</h3><p>${names}</p></div>`;
+    }).join('');
+    $('scrub').value = i; label(i);
+  }
+
+  async function load() {
+    try {
+      const r = await fetch('hours.json?' + Math.floor(Date.now() / 600000), { cache:'no-store' });
+      const m = await r.json(); hours = m.hours || []; started = m.started;
+      if (!hours.length) return;
+      $('scrubrow').hidden = false;
+      $('scrub').max = hours.length - 1;
+      if (live) show(current());
+    } catch (e) { /* stay on the last hour shown */ }
+  }
+
+  $('scrub').addEventListener('input', e => { const i = +e.target.value; live = i === current(); show(i); });
+  $('live').addEventListener('click', () => { live = true; show(current()); });
+
+  // drag to pan on desktop
+  const t = $('tunnel'); let down = false, sx = 0, sl = 0;
+  t.addEventListener('mousedown', e => { down = true; sx = e.pageX; sl = t.scrollLeft; });
+  addEventListener('mouseup', () => down = false);
+  t.addEventListener('mousemove', e => { if (down) { e.preventDefault(); t.scrollLeft = sl - (e.pageX - sx); } });
+
+  // turn over on the hour
+  function tick() {
+    if (live && hours.length && current() !== idx) show(current());
+    const n = new Date(); const ms = 3600000 - (n.getMinutes() * 60000 + n.getSeconds() * 1000 + n.getMilliseconds());
+    setTimeout(() => { load().then(tick); }, Math.min(ms + 5000, 600000));
+  }
+  load().then(tick);
+})();
+</script>
+</body>
+</html>
